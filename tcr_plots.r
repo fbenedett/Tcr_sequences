@@ -3,7 +3,33 @@ library(dplyr)
 library("stringr")
 library(data.table)
 library(scales)
-library(lawstat)
+library(Rcpp)
+library(devtools)
+pkgbuild::has_rtools(TRUE)
+Sys.setenv("PKG_CXXFLAGS" = "-fopenmp -std=c++14")
+Sys.setenv("PKG_LIBS" = "-fopenmp")
+
+
+## CPP function to calculate the Gini Index (much faster than lawstat)
+cppFunction("
+double my_gini(const NumericVector& gph){
+
+size_t size=gph.size();
+
+double avr=0, gini=0;
+for(size_t i=0; i<size; ++i)
+  avr+=gph[i];
+avr/=double(size);
+
+for(size_t i=0; i<size; ++i){
+  for(size_t j=0; j<size; ++j){
+    gini+= fabs(gph[i]-gph[j]);
+  }
+}
+
+return(gini/(2.0*size*size*avr));
+
+}")
 
 
 ## read a TCR file taking only certain lines, in particular the line with "IN"
@@ -13,6 +39,7 @@ cleanse=function(aname){
   df=df[df[,2]>1 & df[,5]=="IN" & df[,4]!="undefined,_,_",]
   df$CDR3_aaseq=as.character(df[,6])
   df=df[df$CDR3_aaseq!="", ]
+  df=df[!grepl("X", df$CDR3_aaseq), ]
   
   df$frequency=df$Count/sum(df$Count)
   df$trxvseqtrxj=paste(df[,3], df$CDR3_aaseq, df[,4], sep="_")
@@ -325,8 +352,7 @@ dev_tcr_estimators=function(databind,sampletype){
     adf=databind[databind$patient==k,]
     en=entropy(adf)
     cl=clonality(adf)
-    gi=gini.index(adf$frequency)
-    gi=as.numeric(gi$statistic)
+    gi=my_gini(adf$frequency)
     adf=data.frame(en, cl, gi, k)
     astatdf=rbind(astatdf, adf)
   }
