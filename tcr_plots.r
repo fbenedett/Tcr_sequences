@@ -5,6 +5,7 @@ library(data.table)
 library(scales)
 library(Rcpp)
 library(devtools)
+library(ggrepel)
 pkgbuild::has_rtools(TRUE)
 Sys.setenv("PKG_CXXFLAGS" = "-fopenmp -std=c++14")
 Sys.setenv("PKG_LIBS" = "-fopenmp")
@@ -17,10 +18,12 @@ double my_gini(const NumericVector& gph){
 size_t size=gph.size();
 
 double avr=0, gini=0;
+#pragma omp parallel for reduction(+:avr)
 for(size_t i=0; i<size; ++i)
   avr+=gph[i];
 avr/=double(size);
 
+#pragma omp parallel for reduction(+:gini)
 for(size_t i=0; i<size; ++i){
   for(size_t j=0; j<size; ++j){
     gini+= fabs(gph[i]-gph[j]);
@@ -58,17 +61,16 @@ cleanse=function(aname){
 trace_seq=function(ldataf, lseq, sampletype){
   tddf=data.frame(patient=NULL, frequency=NULL, trxvseqtrxj=NULL)
   for(i in 1:length(ldataf)){
-    for(j in lseq){
-      
-      if(length(unique(ldataf[[i]]$trxvseqtrxj==j))==2 ){
-        tddf=rbind(tddf, ldataf[[i]][ldataf[[i]]$trxvseqtrxj==j,])
+    res=lapply(lseq, function(x, t_ldataf){
+      if(length(unique(t_ldataf$trxvseqtrxj==x))==2 ){
+        return(t_ldataf[t_ldataf$trxvseqtrxj==x,])
       }
       else{
-        # message(j)
-        t=data.frame(patient=ldataf[[i]]$patient[1], frequency=0, trxvseqtrxj=as.character(j))
-        tddf=rbind(tddf, t)
+        return(data.frame(patient=t_ldataf$patient[1], frequency=0, trxvseqtrxj=as.character(x)))
       }
-    }
+    }, t_ldataf=ldataf[[i]] )
+    
+    tddf=rbind(tddf, do.call(rbind, res))
   }
   tddf$patient=factor(tddf$patient, levels=sampletype, ordered=TRUE)
   return(tddf)
@@ -82,27 +84,17 @@ trace_seq=function(ldataf, lseq, sampletype){
 ## startdf is the CURRENT dataframe (the one where we try to find the first "nseq")
 ## nseq is the number of sequences we would like to find
 find_n_common_seq=function(ldataf, nseq, startdf){
-  curr=1
-  found_seq=0
-  list_found_seq=NULL
-  while( found_seq<nseq & curr<nrow(startdf) ){  # while the found_seq are less than the nseq
-    #taking the current sequence
-    aseq=startdf$trxvseqtrxj[curr]
-    # we need to check if the current sequence is in all the files
-    all_found=TRUE
-    for(j in 1:length(ldataf)){
-      if(aseq %in% ldataf[[j]]$trxvseqtrxj==FALSE ){
-        all_found=FALSE
-      }
-    }
-    if(all_found){
-      list_found_seq=c(list_found_seq, aseq)
-      found_seq=found_seq+1
-    }
-    curr=curr+1
-  }
+  aseq=startdf$trxvseqtrxj
   
-  return(list_found_seq)
+  for(i in 1:length(ldataf)){
+    aseq=ldataf[[i]]$trxvseqtrxj[ldataf[[i]]$trxvseqtrxj %in% aseq]
+  }
+  if(length(aseq)>nseq){
+    return(aseq[1:nseq])
+  }
+  else{
+    return(aseq)
+  }
 }
 
 
@@ -124,7 +116,7 @@ violin_tcr=function(databind, tddf, title){
     scale_y_log10(
       breaks = scales::trans_breaks("log10", function(x) 10^x),
       labels = scales::trans_format("log10", scales::math_format(10^.x)), 
-      limits=c(0.000001,0.5)
+      limits=c(0.00000001,0.5)
     ) +
     annotation_logticks(sides="l") +
     geom_point(size=0.5) +
@@ -148,7 +140,7 @@ violin_tcr_lot=function(databind, tddf, title){
     scale_y_log10(
       breaks = scales::trans_breaks("log10", function(x) 10^x),
       labels = scales::trans_format("log10", scales::math_format(10^.x)), 
-      limits=c(0.000001,0.5)
+      limits=c(0.00000001,0.5)
     ) +
     annotation_logticks(sides="l") +
     geom_point(size=0.5) +
@@ -192,7 +184,7 @@ base_violin_nopoints=function(databind, title){
     scale_y_log10(
       breaks = scales::trans_breaks("log10", function(x) 10^x),
       labels = scales::trans_format("log10", scales::math_format(10^.x)), 
-      limits=c(0.000001,0.5)
+      limits=c(0.00000001,0.5)
     ) +
     annotation_logticks(sides="l") +
     stat_summary(fun.y=median, geom="point", size=4, color="red")+
@@ -211,7 +203,7 @@ base_violin_nostat=function(databind, title){
     scale_y_log10(
       breaks = scales::trans_breaks("log10", function(x) 10^x),
       labels = scales::trans_format("log10", scales::math_format(10^.x)), 
-      limits=c(0.000001,0.5)
+      limits=c(0.00000001,0.5)
     ) +
     annotation_logticks(sides="l") +
     geom_point(size=0.5)+
@@ -346,14 +338,15 @@ weight_of_shared=function(databind, sampletype){
 ### plot Entropy, Clonality and Gini index for all the different tissue/patient contained
 ### in a dataframe
 dev_tcr_estimators=function(databind,sampletype){
-  astatdf=setNames(data.frame(matrix(ncol = 4, nrow = 0)), c("entropy", "clonality", "gini", "sampletype"))
-
+  astatdf=setNames(data.frame(matrix(ncol = 5, nrow = 0)), c("entropy", "clonality", "gini", "richness", "sampletype"))
+  
   for(k in sampletype){
     adf=databind[databind$patient==k,]
     en=entropy(adf)
     cl=clonality(adf)
     gi=my_gini(adf$frequency)
-    adf=data.frame(en, cl, gi, k)
+    rc=nrow(adf)
+    adf=data.frame(en, cl, gi, rc, k)
     astatdf=rbind(astatdf, adf)
   }
   
@@ -361,16 +354,15 @@ dev_tcr_estimators=function(databind,sampletype){
   
   astatdf=cbind(relative_weight=rel_weight$rel_fre, astatdf)
   
-  colnames(astatdf)=c("Shared freq. (weighted)", "Entropy", "Clonality", "Gini", "sampletype")
+  colnames(astatdf)=c("Shared freq. (weighted)", "Entropy", "Clonality", "Gini", "Richness", "sampletype")
   astatdf2=melt(astatdf, id.vars="sampletype")
   p=ggplot(astatdf2, aes(x=sampletype, y=value, group=variable, color=variable))+
     geom_line()+
     geom_point()+
-    geom_text(aes(label=round(value, 2)),hjust=0.5, vjust=-1, show.legend = FALSE)+
+    geom_text_repel(aes(x=sampletype, y=value, label=signif(value,2)), show.legend = FALSE) +
     scale_y_log10(
       breaks = scales::trans_breaks("log10", function(x) 10^x),
-      labels = scales::trans_format("log10", scales::math_format(10^.x)),
-      limits=c(0.01,50) )+
+      labels = scales::trans_format("log10", scales::math_format(10^.x)) )+
     theme(text = element_text(size=20))+
     labs(color="Estimators")
   return(p)
