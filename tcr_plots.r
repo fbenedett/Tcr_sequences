@@ -282,30 +282,31 @@ convert_seq=function(x){
   return(paste(astr[1], astr[3], astr[2], sep="_")) 
 }
 
-## convert David Barras dataframe to ggplot format for the violin plots
+## convert David Barras dataframe to a list of dataframe that can be used in the violin plots
+## each element of the list is a dataframe similar to the ones obtained in "cleanse"
 convert_barras=function(barr_df){
+
+  l_adf=list("vector", length(barr_df)-1)
   
-  ## count how many samples there are in the dataframe
-  sampletypes=(grepl("is_in_", colnames(barr_df)))
-  num_samples=sum(sampletypes)
-  sampletypes=colnames(barr_df)[sampletypes]
-  sampletypes=str_replace(sampletypes, "is_in_", "")
-  
-  
-  ## counting columns start at num_samples+2, frequencies start at num_samples*2 + 2
-  fdf=NULL
-  for(i in 1:num_samples ){
-    type_col=i+1
-    count_col=num_samples+type_col
+  for(i in 1:(length(barr_df)-1)){
+    adata=barr_df[[i]]
+    adata$reads=as.numeric(adata$reads)
+    adata2=data.frame(X.CDR3_sequence=adata$cdr3_nt)
     
-    tdf=barr_df[ barr_df[,count_col]>0,c(1, count_col) ]
-    tdf[,2]=tdf[,2]/sum(tdf[,2])
-    tdf$patient=rep(sampletypes[i],nrow(tdf) )
-    tdf$unique_id=sapply(tdf$unique_id, convert_seq)
-    colnames(tdf)=c("trxvseqtrxj","frequency","patient")
-    fdf=rbind(fdf, tdf)
+    adata2$count=adata$reads
+    adata2$TRAV=adata$v_gene
+    adata2$TRAJ=adata$j_gene
+    adata2$frame=rep("IN", nrow(adata))
+    adata2$CDR3_aaseq=adata$cdr3
+    adata2$CDR3_length=nchar(adata$cdr3)
+    adata2$frequency=adata$reads/sum(adata$reads)
+    adata2$trxvseqtrxj=sapply(adata$unique_id, convert_seq)
+    adata2=adata2[order(adata2$frequency, decreasing=TRUE), ]
+    l_adf[[i]]=adata2
   }
-  return(fdf)
+  names(l_adf)=names(barr_df)[1:(length(barr_df)-1)]  
+
+  return(l_adf)
 }
 
 
