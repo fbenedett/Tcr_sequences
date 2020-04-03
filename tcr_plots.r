@@ -289,23 +289,42 @@ convert_barras=function(barr_df){
   l_adf=list("vector", length(barr_df)-1)
   
   for(i in 1:(length(barr_df)-1)){
+    ## we may have single cell or bulk, we need to find out and
+    ## adapt depending on it
     adata=barr_df[[i]]
-    adata$reads=as.numeric(adata$reads)
-    adata2=data.frame(X.CDR3_sequence=adata$cdr3_nt)
+    if(ncol(adata)==19){ ## this is single cell
+      
+      adata$reads=as.numeric(adata$reads)
+      adata2=data.frame(X.CDR3_sequence=adata$cdr3_nt)
+      
+      adata2$count=adata$reads
+      adata2$TRAV=adata$v_gene
+      adata2$TRAJ=adata$j_gene
+      adata2$frame=rep("IN", nrow(adata))
+      adata2$CDR3_aaseq=adata$cdr3
+      adata2$CDR3_length=nchar(adata$cdr3)
+      adata2$frequency=adata$reads/sum(adata$reads)
+      adata2$trxvseqtrxj=sapply(adata$unique_id, convert_seq)
+      adata2=adata2[order(adata2$frequency, decreasing=TRUE), ]
+      l_adf[[i]]=adata2
+    }
+    if(ncol(adata)==8){
+      adata2=data.frame(X.CDR3_sequence=adata$unique_id)
+      adata2$count=adata$Count
+      adata2$TRAV=adata$TRBV
+      adata2$TRAJ=adata$TRBJ
+      adata2$frame=rep("IN", nrow(adata))
+      adata2$CDR3_aaseq=adata$CDR3_aaseq
+      adata2$CDR3_length=adata$CDR3_length
+      adata2$frequency=adata$Count/sum(adata$Count)
+      adata2$trxvseqtrxj=adata$unique_id
+      adata2=adata2[order(adata2$frequency, decreasing=TRUE), ]
+      l_adf[[i]]=adata2
+    }
     
-    adata2$count=adata$reads
-    adata2$TRAV=adata$v_gene
-    adata2$TRAJ=adata$j_gene
-    adata2$frame=rep("IN", nrow(adata))
-    adata2$CDR3_aaseq=adata$cdr3
-    adata2$CDR3_length=nchar(adata$cdr3)
-    adata2$frequency=adata$reads/sum(adata$reads)
-    adata2$trxvseqtrxj=sapply(adata$unique_id, convert_seq)
-    adata2=adata2[order(adata2$frequency, decreasing=TRUE), ]
-    l_adf[[i]]=adata2
   }
   names(l_adf)=names(barr_df)[1:(length(barr_df)-1)]  
-
+  
   return(l_adf)
 }
 
