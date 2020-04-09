@@ -10,11 +10,12 @@ Process_TCR <- function(TCR_files){
   }
   format_bulk <- function(bulk){
     bulk[]<-lapply(bulk,as.character) # Transform factors into character
-    Conversion<-read.delim("tcr_dbase/Conversion_Bulk_10X_Database.txt")
+    ##### the following line should be always replaced with the full path
+    Conversion<-read.delim("/media/fbenedet/Elements/scratch/my_cyto_r_utils/tcr_dbase/Conversion_Bulk_10X_Database.txt")
     
     # Remove Outofframe and Stop
-    bulk<-bulk[-which(bulk$Frame %in% c("OUT","STOP")),] 
-    
+    if(length(which(bulk$Frame %in% c("OUT","STOP")))>0){bulk<-bulk[-which(bulk$Frame %in% c("OUT","STOP")),]}
+     
     #remove undefined V and J chains
     if(length(grep("_|undefined",bulk$TRBJ))>0){bulk<-bulk[-grep("_|undefined",bulk$TRBJ),]}
     if(length(grep("_|undefined",bulk$TRBV))>0){bulk<-bulk[-grep("_|undefined",bulk$TRBV),]}
@@ -28,10 +29,11 @@ Process_TCR <- function(TCR_files){
     
     # Create unique ID (V + J + CD3)
     bulk$unique_id<-paste(bulk$TRBV,bulk$TRBJ,bulk$CDR3_aaseq,sep="_")
-    bulk$Count<-as.numeric(bulk$Count)
     
     # Remove Chains with counts equaling 1 (like Raphael Genolet does)
+    bulk$Count<-as.numeric(bulk$Count)
     if(length(which(bulk$Count==1))>0){bulk<-bulk[-which(bulk$Count==1),]}
+    
     return(bulk)
   }
   format_10X <- function(VDJ){
@@ -47,6 +49,13 @@ Process_TCR <- function(TCR_files){
     # Keep those that are attributed to a cell
     if(length(which(VDJ$is_cell=="False"))>0){VDJ<-VDJ[-which(VDJ$is_cell=="False"),]} 
     
+    # Remove the cells that have 4 chains
+    duplets<-names(which(table(VDJ$barcode)==4))
+    if(length(duplets)>0){VDJ<-VDJ[-which(VDJ$barcode %in% duplets),]}
+    
+    # Keep the total number of cells for percentage
+    VDJ$total_number_cells<-length(unique(VDJ$barcode))
+  
     # Separate alpha and beta chains in two files
     VDJ_a<-VDJ[which(VDJ$chain=="TRA"),]
     VDJ_b<-VDJ[which(VDJ$chain=="TRB"),]
@@ -91,8 +100,7 @@ Process_TCR <- function(TCR_files){
   # Initializing columns
   for(i in 1:n){TCR_b_comp$tmp<-"no";colnames(TCR_b_comp)[which(colnames(TCR_b_comp)=="tmp")]<-paste0("is_in_",names(TCR_files)[i])}
   for(i in 1:n){TCR_b_comp$tmp<-0;colnames(TCR_b_comp)[which(colnames(TCR_b_comp)=="tmp")]<-paste0("counts_in_",names(TCR_files)[i])}
-  
-  
+
   for(i in 1:nrow(TCR_b_comp)){
     for(j in 1:n){
       tmp<-get(names(TCR_files)[j])
@@ -117,7 +125,7 @@ Process_TCR <- function(TCR_files){
     }
     if(technology[i]=="sc"){
       tmp<-get(names(TCR_files)[i])
-      TCR_b_comp$tmp<-(TCR_b_comp[,which(colnames(TCR_b_comp)==paste0("counts_in_",names(TCR_files)[i]))]/length(unique(tmp$barcode)))*100
+      TCR_b_comp$tmp<-(TCR_b_comp[,which(colnames(TCR_b_comp)==paste0("counts_in_",names(TCR_files)[i]))]/unique(tmp$total_number_cells))*100
       colnames(TCR_b_comp)[which(colnames(TCR_b_comp)=="tmp")]<-paste0("Perc_in_",names(TCR_files)[i])
     }
   }
