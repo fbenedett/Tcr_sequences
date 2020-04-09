@@ -285,47 +285,28 @@ convert_seq=function(x){
 ## convert David Barras dataframe to a list of dataframe that can be used in the violin plots
 ## each element of the list is a dataframe similar to the ones obtained in "cleanse"
 convert_barras=function(barr_df){
-
-  l_adf=list("vector", length(barr_df)-1)
+  lastb=abarr_list[[length(abarr_list)]]
+  ## first we need to find the names of the various objects
+  name_obj=colnames(lastb)[grepl("is_", colnames(lastb))]
+  name_obj=sapply(name_obj, function(x){
+    return(strsplit(x, "is_", fixed=TRUE)[[1]][2])})
+  name_obj2=sapply(name_obj, function(x){
+    return(strsplit(x, "in_", fixed=TRUE)[[1]][2])})
   
-  for(i in 1:(length(barr_df)-1)){
-    ## we may have single cell or bulk, we need to find out and
-    ## adapt depending on it
-    adata=barr_df[[i]]
-    if(ncol(adata)==19){ ## this is single cell
-      
-      adata$reads=as.numeric(adata$reads)
-      adata2=data.frame(X.CDR3_sequence=adata$cdr3_nt)
-      
-      adata2$count=adata$reads
-      adata2$TRAV=adata$v_gene
-      adata2$TRAJ=adata$j_gene
-      adata2$frame=rep("IN", nrow(adata))
-      adata2$CDR3_aaseq=adata$cdr3
-      adata2$CDR3_length=nchar(adata$cdr3)
-      adata2$frequency=adata$reads/sum(adata$reads)
-      adata2$trxvseqtrxj=sapply(adata$unique_id, convert_seq)
-      adata2=adata2[order(adata2$frequency, decreasing=TRUE), ]
-      l_adf[[i]]=adata2
-    }
-    if(ncol(adata)==8){
-      adata2=data.frame(X.CDR3_sequence=adata$unique_id)
-      adata2$count=adata$Count
-      adata2$TRAV=adata$TRBV
-      adata2$TRAJ=adata$TRBJ
-      adata2$frame=rep("IN", nrow(adata))
-      adata2$CDR3_aaseq=adata$CDR3_aaseq
-      adata2$CDR3_length=adata$CDR3_length
-      adata2$frequency=adata$Count/sum(adata$Count)
-      adata2$trxvseqtrxj=adata$unique_id
-      adata2=adata2[order(adata2$frequency, decreasing=TRUE), ]
-      l_adf[[i]]=adata2
-    }
+  l_df=list()
+  cl=1
+  ## create a number of dataframes 
+  for(n in 1:length(name_obj)){
+    cn1=paste0("is_",name_obj[n])
+    tf_vect=lastb[,cn1]=="yes"
+    cn2=paste0("Perc_", name_obj[n])
     
+    pname=rep(name_obj2[n], sum(tf_vect))  
+    tdf=data.frame(trxvseqtrxj=lastb[tf_vect,"unique_id"] , frequency=lastb[tf_vect,cn2]  , patient=pname  )
+    l_df[[cl]]=tdf
+    cl=cl+1
   }
-  names(l_adf)=names(barr_df)[1:(length(barr_df)-1)]  
-  
-  return(l_adf)
+  return(l_df)
 }
 
 
