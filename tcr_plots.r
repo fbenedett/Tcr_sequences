@@ -239,6 +239,47 @@ entropy=function(adf){
   return(res)
 }
 
+## calculate the Gini-Simpson index
+gini_simpson=function(adf){
+  res=1.0 - sum(adf$frequency^2)
+  return(res)
+}
+
+
+morisita_horn=function(databind, type1, type2){
+  adf1=databind[databind$patient==type1,]
+  adf2=databind[databind$patient==type2,]
+  common_seq=intersect(adf1$trxvseqtrxj, adf2$trxvseqtrxj)
+  adf1=adf1[ adf1$trxvseqtrxj %in% common_seq, ]
+  adf2=adf2[ adf2$trxvseqtrxj %in% common_seq, ]
+  total_n1=nrow(adf1)
+  total_n2=nrow(adf2)
+  # sorting the dataframe in the same order
+  rownames(adf1)=common_seq
+  rownames(adf2)=common_seq
+  adf1=adf1[common_seq,]
+  adf2=adf2[common_seq,]
+  return(  2*sum(adf1$frequency*adf2$frequency)/(gini_simpson(adf1)+gini_simpson(adf2))  )
+}
+
+
+bhattacharyya=function(databind, type1, type2){
+  adf1=databind[databind$patient==type1,]
+  adf2=databind[databind$patient==type2,]
+  common_seq=intersect(adf1$trxvseqtrxj, adf2$trxvseqtrxj)
+  adf1=adf1[ adf1$trxvseqtrxj %in% common_seq, ]
+  adf2=adf2[ adf2$trxvseqtrxj %in% common_seq, ]
+  total_n1=nrow(adf1)
+  total_n2=nrow(adf2)
+  # sorting the dataframe in the same order
+  rownames(adf1)=common_seq
+  rownames(adf2)=common_seq
+  adf1=adf1[common_seq,]
+  adf2=adf2[common_seq,]
+  return( sum(sqrt(adf1$frequency*adf2$frequency )) )
+}
+
+
 ## calculate how many TCR sequences have a frequency "thresholds times" above the median
 ## for dataframe with ONE SINGLE SAMPLE
 n_over_median=function(adf, athreshold){
@@ -284,7 +325,7 @@ convert_seq=function(x){
 
 ## convert David Barras dataframe to a list of dataframe that can be used in the violin plots
 ## each element of the list is a dataframe similar to the ones obtained in "cleanse"
-convert_barras=function(barr_df){
+convert_barras=function(abarr_list){
   lastb=abarr_list[[length(abarr_list)]]
   ## first we need to find the names of the various objects
   name_obj=colnames(lastb)[grepl("is_", colnames(lastb))]
@@ -339,15 +380,16 @@ weight_of_shared=function(databind, sampletype){
 ### plot Entropy, Clonality and Gini index for all the different tissue/patient contained
 ### in a dataframe
 dev_tcr_estimators=function(databind,sampletype){
-  astatdf=setNames(data.frame(matrix(ncol = 5, nrow = 0)), c("entropy", "clonality", "gini", "richness", "sampletype"))
+  astatdf=setNames(data.frame(matrix(ncol = 6, nrow = 0)), c("entropy", "clonality", "gini", "gini-simpson", "richness", "sampletype"))
   
   for(k in sampletype){
     adf=databind[databind$patient==k,]
     en=entropy(adf)
     cl=clonality(adf)
     gi=my_gini(adf$frequency)
+    gs=gini_simpson(adf)
     rc=nrow(adf)
-    adf=data.frame(en, cl, gi, rc, k)
+    adf=data.frame(en, cl, gi, gs, rc, k)
     astatdf=rbind(astatdf, adf)
   }
   
@@ -355,7 +397,7 @@ dev_tcr_estimators=function(databind,sampletype){
   
   astatdf=cbind(relative_weight=rel_weight$rel_fre, astatdf)
   
-  colnames(astatdf)=c("Shared freq. (weighted)", "Entropy", "Clonality", "Gini", "Richness", "sampletype")
+  colnames(astatdf)=c("Shared freq. (weighted)", "Entropy", "Clonality", "Gini", "Gini-Simpson", "Richness", "sampletype")
   astatdf2=melt(astatdf, id.vars="sampletype")
   p=ggplot(astatdf2, aes(x=sampletype, y=value, group=variable, color=variable))+
     geom_line()+
