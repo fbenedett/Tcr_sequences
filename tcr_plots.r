@@ -246,6 +246,10 @@ gini_simpson=function(adf){
 }
 
 
+## we can use the morisita horn formula even using the probability
+##  the formula is    2*sum_i_to_s Count_A_i * Count_B_i / ((sum_i_to_s f_Ai^2 * sum_i_to_s f_B_i^2)*total_A*total_B)
+
+
 morisita_horn=function(databind, type1, type2){
   adf1=databind[databind$patient==type1,]
   adf2=databind[databind$patient==type2,]
@@ -259,7 +263,7 @@ morisita_horn=function(databind, type1, type2){
   rownames(adf2)=common_seq
   adf1=adf1[common_seq,]
   adf2=adf2[common_seq,]
-  return(  2*sum(adf1$frequency*adf2$frequency)/(gini_simpson(adf1)+gini_simpson(adf2))  )
+  return(  2*sum(adf1$frequency*adf2$frequency)/( sum(adf1$frequency^2)+sum(adf2$frequency^2))  )
 }
 
 
